@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { Bot, Check, Copy } from 'lucide-react';
+import { Bot, Check, ChevronDown, Copy } from 'lucide-react';
 import type { ChatMessage } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Markdown } from './markdown';
@@ -38,9 +38,32 @@ function CopyButton({ text }: { text: string }) {
 }
 
 /**
+ * 思考过程块：推理模型（如 DeepSeek-R1）的 reasoning 内容。
+ * 折叠展示；流式中自动展开，完成后可手动收放。
+ */
+function ReasoningBlock({ text, streaming }: { text: string; streaming?: boolean }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <details
+      open={streaming || open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+      className="group mb-2 rounded-lg border border-border/60 bg-muted/40"
+    >
+      <summary className="flex cursor-pointer select-none items-center gap-1 px-2.5 py-1.5 text-[11px] text-muted-foreground hover:text-foreground">
+        <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+        {streaming ? '思考中…' : '已深度思考'}
+      </summary>
+      <div className="border-t border-border/40 px-2.5 py-2 text-[12px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
+        {text}
+      </div>
+    </details>
+  );
+}
+
+/**
  * 单条聊天消息。
  * - 用户消息：右侧主色气泡
- * - 助手消息：左侧卡片 + 头像 + 复制按钮
+ * - 助手消息：左侧卡片 + 头像 + 思考过程 + 复制按钮
  */
 export const MessageItem = memo(function MessageItem({
   message,
@@ -86,6 +109,7 @@ export const MessageItem = memo(function MessageItem({
             compact ? 'px-3 py-2' : 'px-3.5 py-2.5',
           )}
         >
+          {message.reasoning && <ReasoningBlock text={message.reasoning} streaming={streaming} />}
           {message.content ? (
             <Markdown content={message.content} className={compact ? 'text-[13px]' : undefined} />
           ) : (

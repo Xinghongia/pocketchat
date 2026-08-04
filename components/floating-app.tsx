@@ -9,7 +9,7 @@ import { ModelSelect } from '@/components/chat/model-select';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/stores/chat';
-import { useSettingsStore } from '@/stores/settings';
+import { useSettingsStore, selectActiveProvider } from '@/stores/settings';
 import { useDarkMode } from '@/lib/hooks/use-theme';
 import { PortalContainerProvider } from '@/lib/portal-context';
 import { cn } from '@/lib/utils';
@@ -60,9 +60,22 @@ export function FloatingApp({ position, portalContainer, onClose, onExpand }: Fl
     ? conversations.find((c) => c.id === activeId)?.title
     : undefined;
 
+  // 是否已激活服务商：控制空状态引导与输入拦截
+  const hasProvider = !!selectActiveProvider(useSettingsStore.getState().settings);
+  useSettingsStore((s) => s.settings); // 订阅，使 hasProvider 响应式
+
   const handleNewChat = async () => {
     setConvOpen(false);
     await newConversation();
+  };
+
+  // 无服务商时：发送动作改为打开设置，引导用户配置
+  const handleSend = (text: string) => {
+    if (!hasProvider) {
+      setSettingsOpen(true);
+      return;
+    }
+    void sendMessage(text);
   };
 
   return (
@@ -128,13 +141,21 @@ export function FloatingApp({ position, portalContainer, onClose, onExpand }: Fl
             status={status}
             streamingMessageId={streamingMessageId}
             compact
+            hasProvider={hasProvider}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onPick={(text) => handleSend(text)}
             emptyHint="随时随地，问点什么吧"
           />
 
           <MessageInput
-            onSend={(text) => void sendMessage(text)}
+            onSend={handleSend}
             onStop={stop}
             streaming={status === 'streaming'}
+            placeholder={
+              hasProvider
+                ? '输入消息，Enter 发送，Shift+Enter 换行'
+                : '请先在设置中添加服务商'
+            }
           />
 
           <ConversationList

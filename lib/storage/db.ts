@@ -170,8 +170,12 @@ export async function saveMessage(
   return full;
 }
 
-/** 更新一条已存在的消息（用于流式完成后回写最终内容） */
-export async function updateMessage(id: string, content: string): Promise<void> {
+/** 更新一条已存在的消息（流式完成后回写最终内容 / 思考过程） */
+export async function updateMessage(
+  id: string,
+  content: string,
+  reasoning?: string,
+): Promise<void> {
   await openDB().then(
     (db) =>
       new Promise<void>((resolve, reject) => {
@@ -181,6 +185,7 @@ export async function updateMessage(id: string, content: string): Promise<void> 
           const row = getReq.result as ChatMessage | undefined;
           if (row) {
             row.content = content;
+            if (reasoning !== undefined) row.reasoning = reasoning;
             t.objectStore(DB.stores.messages).put(row);
           }
         };

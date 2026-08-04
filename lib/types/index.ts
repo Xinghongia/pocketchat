@@ -6,6 +6,8 @@ export interface ChatMessage {
   id: string;
   role: ChatRole;
   content: string;
+  /** 思考过程（推理模型如 DeepSeek-R1 返回，可选） */
+  reasoning?: string;
   createdAt: number;
 }
 
@@ -29,12 +31,19 @@ export interface ProviderConfig {
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+/** 输出模式：流式逐字 / 一次性完整返回 */
+export type StreamMode = 'stream' | 'non-stream';
+
 export interface AppSettings {
-  /** 当前启用的服务商 ID */
+  /** 当前启用的服务商 ID（空 = 未选择，默认不选） */
   activeProviderId: string;
-  /** 当前模型 */
+  /** 当前模型（空 = 未选择） */
   activeModel: string;
   theme: ThemeMode;
+  /** 输出模式：流式 / 非流式（设置中可调） */
+  streamMode: StreamMode;
+  /** 是否显示模型的思考过程（reasoning） */
+  showReasoning: boolean;
   providers: ProviderConfig[];
 }
 

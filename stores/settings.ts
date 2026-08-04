@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppSettings, ProviderConfig } from '@/lib/types';
+import type { AppSettings, ProviderConfig, StreamMode } from '@/lib/types';
 import { loadSettings, saveSettings, upsertProvider, removeProvider } from '@/lib/storage/settings';
 
 interface SettingsState {
@@ -12,6 +12,8 @@ interface SettingsState {
   updateProvider: (p: ProviderConfig) => Promise<void>;
   removeProvider: (providerId: string) => Promise<void>;
   setTheme: (theme: AppSettings['theme']) => Promise<void>;
+  setStreamMode: (mode: StreamMode) => Promise<void>;
+  setShowReasoning: (show: boolean) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -66,6 +68,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const { settings } = get();
     if (!settings) return;
     const next = { ...settings, theme };
+    set({ settings: next });
+    await saveSettings(next);
+  },
+
+  setStreamMode: async (mode) => {
+    const { settings } = get();
+    if (!settings) return;
+    const next = { ...settings, streamMode: mode };
+    set({ settings: next });
+    await saveSettings(next);
+  },
+
+  setShowReasoning: async (show) => {
+    const { settings } = get();
+    if (!settings) return;
+    const next = { ...settings, showReasoning: show };
     set({ settings: next });
     await saveSettings(next);
   },

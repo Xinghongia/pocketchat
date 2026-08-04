@@ -10,9 +10,12 @@ import { uid } from '@/lib/utils';
 
 function defaultSettings(): AppSettings {
   return {
-    activeProviderId: BUILTIN_PROVIDERS[0]?.id ?? '',
-    activeModel: BUILTIN_PROVIDERS[0]?.models[0] ?? '',
+    // 默认不选中任何服务商/模型：由用户主动添加或选择，避免静默使用预设
+    activeProviderId: '',
+    activeModel: '',
     theme: 'system',
+    streamMode: 'stream',
+    showReasoning: true,
     providers: BUILTIN_PROVIDERS,
   };
 }
@@ -27,6 +30,9 @@ export async function loadSettings(): Promise<AppSettings> {
   const merged: AppSettings = {
     ...defaultSettings(),
     ...raw,
+    // 老数据缺少新字段时补默认值（streamMode / showReasoning）
+    streamMode: raw.streamMode ?? 'stream',
+    showReasoning: raw.showReasoning ?? true,
     providers: [...BUILTIN_PROVIDERS, ...custom],
   };
   return merged;

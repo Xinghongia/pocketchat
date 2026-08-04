@@ -9,7 +9,7 @@ import { ModelSelect } from '@/components/chat/model-select';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/stores/chat';
-import { useSettingsStore } from '@/stores/settings';
+import { useSettingsStore, selectActiveProvider } from '@/stores/settings';
 import { useTheme } from '@/lib/hooks/use-theme';
 
 /**
@@ -45,6 +45,10 @@ export default function App() {
     ? conversations.find((c) => c.id === activeId)?.title
     : undefined;
 
+  // 是否已激活服务商：控制空状态引导与输入拦截
+  const hasProvider = !!selectActiveProvider(useSettingsStore.getState().settings);
+  useSettingsStore((s) => s.settings); // 订阅，使 hasProvider 响应式
+
   const handleNewChat = async () => {
     setConvOpen(false);
     await newConversation();
@@ -53,6 +57,15 @@ export default function App() {
   const handleExpand = () => {
     // 通知 background：打开全页面并关闭当前侧边栏
     void browser.runtime.sendMessage({ type: 'PC_OPEN_FULL_PAGE' });
+  };
+
+  // 无服务商时：发送动作改为打开设置，引导用户配置
+  const handleSend = (text: string) => {
+    if (!hasProvider) {
+      setSettingsOpen(true);
+      return;
+    }
+    void sendMessage(text);
   };
 
   return (
@@ -94,13 +107,21 @@ export default function App() {
         messages={messages}
         status={status}
         streamingMessageId={streamingMessageId}
+        hasProvider={hasProvider}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onPick={(text) => handleSend(text)}
         emptyHint="点一下示例，或直接输入你的问题"
       />
 
       <MessageInput
-        onSend={(text) => void sendMessage(text)}
+        onSend={handleSend}
         onStop={stop}
         streaming={status === 'streaming'}
+        placeholder={
+          hasProvider
+            ? '输入消息，Enter 发送，Shift+Enter 换行'
+            : '请先在设置中添加服务商'
+        }
       />
 
       <ConversationList

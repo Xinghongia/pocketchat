@@ -11,6 +11,12 @@ interface MessageListProps {
   compact?: boolean;
   /** 空状态提示语 */
   emptyHint?: string;
+  /** 是否已激活服务商（控制空状态引导） */
+  hasProvider?: boolean;
+  /** 点击示例直接发送 */
+  onPick?: (text: string) => void;
+  /** 打开设置弹窗（无服务商引导用） */
+  onOpenSettings?: () => void;
   className?: string;
 }
 
@@ -24,6 +30,9 @@ export function MessageList({
   streamingMessageId,
   compact,
   emptyHint,
+  hasProvider,
+  onPick,
+  onOpenSettings,
   className,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -36,7 +45,13 @@ export function MessageList({
   if (messages.length === 0) {
     return (
       <div className={cn('flex-1 overflow-y-auto', className)}>
-        <EmptyState hint={emptyHint} compact={compact} />
+        <EmptyState
+          hint={emptyHint}
+          compact={compact}
+          hasProvider={hasProvider}
+          onPick={onPick}
+          onOpenSettings={onOpenSettings}
+        />
       </div>
     );
   }
