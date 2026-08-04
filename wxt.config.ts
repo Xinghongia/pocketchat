@@ -17,7 +17,7 @@ export default defineConfig({
   }),
   manifest: {
     name: 'PocketChat',
-    description: '个人专属的浏览器 AI 助手：侧边栏 / 悬浮窗 / 全页面，数据只留在你自己的设备上。',
+    description: '个人专属的浏览器 AI 助手：侧边栏 / 全页面，数据只留在你自己的设备上。',
     permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'contextMenus'],
     // 用户可自由接入任意 OpenAI 兼容服务商（云端 API 或本地 Ollama），
     // 因此放开跨域请求权限；插件本身不访问任何第三方服务器。

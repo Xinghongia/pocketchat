@@ -49,7 +49,7 @@ export default defineBackground(() => {
       if (tabId == null) return;
       const send = (msg: unknown) => void browser.tabs.sendMessage(tabId, msg).catch(() => {});
       if (info.menuItemId === 'pc-ask-selection' && info.selectionText) {
-        send({ type: 'PC_OPEN_FLOATING_WITH_PROMPT', prompt: info.selectionText });
+        send({ type: 'PC_ASK_WITH_PROMPT', prompt: info.selectionText });
       } else if (info.menuItemId === 'pc-summarize-page') {
         send({ type: 'PC_SUMMARIZE_PAGE' });
       } else if (info.menuItemId === 'pc-send-page') {
@@ -61,24 +61,32 @@ export default defineBackground(() => {
   // 「展开为全页面」：打开 page.html，并关闭当前侧边栏。
   // Chrome 没有官方关闭 side panel 的 API，用 setOptions({enabled:false})
   // 临时禁用再恢复的 hack 实现收起（Chrome 114+）。
-  browser.runtime.onMessage.addListener((msg) => {
-    if (msg?.type !== 'PC_OPEN_FULL_PAGE') return;
+  // 「打开侧边栏」：划词 / 右键菜单 / 页面总结发来的请求（Chrome 116+ 的 sidePanel.open）。
+  browser.runtime.onMessage.addListener((msg, sender) => {
+    if (msg?.type === 'PC_OPEN_FULL_PAGE') {
+      void browser.tabs.create({ url: browser.runtime.getURL('/page.html') });
 
-    void browser.tabs.create({ url: browser.runtime.getURL('/page.html') });
-
-    const sp = browser.sidePanel;
-    if (sp?.setOptions) {
-      sp.setOptions({ enabled: false })
-        .then(() => {
-          setTimeout(() => {
-            sp.setOptions({ enabled: true }).catch(() => {
-              /* 忽略 */
-            });
-          }, 120);
-        })
-        .catch(() => {
-          /* 忽略：某些浏览器/环境不支持 */
+      const sp = browser.sidePanel;
+      if (sp?.setOptions) {
+        sp.setOptions({ enabled: false })
+          .then(() => {
+            setTimeout(() => {
+              sp.setOptions({ enabled: true }).catch(() => {
+                /* 忽略 */
+              });
+            }, 120);
+          })
+          .catch(() => {
+            /* 忽略：某些浏览器/环境不支持 */
+          });
+      }
+    } else if (msg?.type === 'PC_OPEN_SIDEPANEL') {
+      const tabId = sender.tab?.id;
+      if (tabId != null && browser.sidePanel?.open) {
+        browser.sidePanel.open({ tabId }).catch(() => {
+          /* 忽略：浏览器不支持时静默降级 */
         });
+      }
     }
   });
 });

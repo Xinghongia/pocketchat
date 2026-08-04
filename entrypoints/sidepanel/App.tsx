@@ -12,13 +12,23 @@ import { useChatStore } from '@/stores/chat';
 import { useSettingsStore, selectActiveProvider } from '@/stores/settings';
 import { useTheme } from '@/lib/hooks/use-theme';
 
+const PENDING_KEY = 'pc.pendingPrompt';
+
+interface PendingPromptPayload {
+  prompt: string;
+  autoSend?: boolean;
+  ts: number;
+}
+
 /**
  * 侧边栏形态：整页高度（100vh），宽度由浏览器侧边栏决定（约 400px）。
  * 复用全部聊天组件，仅在组装层做形态编排。
+ * 划词提问 / 右键菜单 / 页面总结的 prompt 经 chrome.storage.local 桥接进来。
  */
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [convOpen, setConvOpen] = useState(false);
+  const [pendingPrompt, setPendingPrompt] = useState<PendingPromptPayload | null>(null);
   useTheme();
 
   // 初始化加载
@@ -28,6 +38,32 @@ export default function App() {
     void loadSettings();
     void loadConversations();
   }, [loadSettings, loadConversations]);
+
+  // 接收来自 content script 的待发送 prompt（划词 / 右键 / 页面总结）：
+  // 挂载时读一次；之后监听 storage 变化（侧边栏已打开时内容注入）。
+  // autoSend 直接发送；否则预填输入框供用户编辑。
+  useEffect(() => {
+    const readPending = async () => {
+      try {
+        const res = await browser.storage.local.get(PENDING_KEY);
+        const p = res[PENDING_KEY] as PendingPromptPayload | undefined;
+        if (!p) return;
+        await browser.storage.local.remove(PENDING_KEY);
+        setPendingPrompt(p);
+      } catch {
+        /* 忽略 */
+      }
+    };
+    void readPending();
+    const onChanged = (
+      changes: Record<string, { newValue?: unknown; oldValue?: unknown }>,
+      area: string,
+    ) => {
+      if (area === 'local' && changes[PENDING_KEY]) void readPending();
+    };
+    browser.storage.onChanged.addListener(onChanged);
+    return () => browser.storage.onChanged.removeListener(onChanged);
+  }, []);
 
   // chat store
   const conversations = useChatStore((s) => s.conversations);
@@ -70,6 +106,16 @@ export default function App() {
     void sendMessage(text);
   };
 
+  // 处理桥接进来的 prompt：autoSend 直接发送，否则预填（key 变化重挂载输入框）
+  useEffect(() => {
+    if (!pendingPrompt) return;
+    if (pendingPrompt.autoSend) {
+      handleSend(pendingPrompt.prompt);
+      setPendingPrompt(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPrompt]);
+
   return (
     <ChatShell>
       <ChatHeader
@@ -84,7 +130,9 @@ export default function App() {
             >
               <List className="h-4 w-4" />
             </Button>
-            <span className="truncate">{activeTitle ?? 'PocketChat'}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+              {activeTitle ?? 'PocketChat'}
+            </span>
           </div>
         }
         actions={
@@ -95,7 +143,7 @@ export default function App() {
               size="icon"
               onClick={handleExpand}
               title="展开为全页面"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
             >
               <Expand className="h-4 w-4" />
             </Button>
@@ -118,14 +166,12 @@ export default function App() {
       />
 
       <MessageInput
+        key={pendingPrompt ? `pending-${pendingPrompt.ts}` : 'default'}
+        initialValue={pendingPrompt?.prompt}
         onSend={handleSend}
         onStop={stop}
         streaming={status === 'streaming'}
-        placeholder={
-          hasProvider
-            ? '输入消息，Enter 发送，Shift+Enter 换行'
-            : '请先在设置中添加服务商'
-        }
+        placeholder={hasProvider ? '输入消息，Enter 发送' : '请先在设置中添加服务商'}
       />
 
       <ConversationList
