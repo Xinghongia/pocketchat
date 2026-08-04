@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import { ProviderForm } from './provider-form';
+import { ProviderDialog } from './provider-dialog';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -79,19 +79,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           <DialogDescription>模型 · 服务商 · 外观</DialogDescription>
         </DialogHeader>
 
-        {editing !== undefined ? (
-          <div className="px-5 py-4">
-            <h3 className="mb-3 text-sm font-semibold">
-              {editing ? `编辑「${editing.name}」` : '添加服务商'}
-            </h3>
-            <ProviderForm
-              initial={editing}
-              onSave={handleSaveProvider}
-              onCancel={() => setEditing(undefined)}
-            />
-          </div>
-        ) : (
-          <div className="max-h-[60vh] space-y-5 overflow-y-auto px-5 py-4">
+        <div className="max-h-[60vh] space-y-5 overflow-y-auto px-5 py-4">
             {/* 模型选择 */}
             <section className="space-y-2.5">
               <h3 className="text-[13px] font-medium text-foreground">当前模型</h3>
@@ -285,8 +273,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </div>
             </section>
           </div>
-        )}
       </DialogContent>
+
+      {/* 新增 / 编辑服务商的独立弹窗（叠加在设置之上） */}
+      <ProviderDialog
+        open={editing !== undefined}
+        initial={editing ?? null}
+        onOpenChange={(o) => {
+          if (!o) setEditing(undefined);
+        }}
+        onSave={handleSaveProvider}
+      />
     </Dialog>
   );
 }
