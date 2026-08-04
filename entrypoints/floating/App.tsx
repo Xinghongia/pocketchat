@@ -49,6 +49,8 @@ export default function App() {
   };
 
   const handleExpand = () => {
+    // 先让 content script 收起悬浮窗，再打开全页面
+    void browser.runtime.sendMessage({ type: 'PC_CLOSE_FLOATING' });
     void browser.tabs.create({ url: browser.runtime.getURL('/page.html') });
   };
 

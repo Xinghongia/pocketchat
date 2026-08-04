@@ -156,5 +156,12 @@ export default defineContentScript({
         panel.classList.remove('open');
       }
     });
+
+    // ---------- 监听扩展页面发来的关闭消息（如「展开为全页面」时） ----------
+    browser.runtime.onMessage.addListener((msg) => {
+      if (msg?.type === 'PC_CLOSE_FLOATING') {
+        panel.classList.remove('open');
+      }
+    });
   },
 });

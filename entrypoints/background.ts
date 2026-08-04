@@ -11,4 +11,28 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(() => {
     console.log('[PocketChat] installed');
   });
+
+  // 「展开为全页面」：打开 page.html，并关闭当前侧边栏。
+  // Chrome 没有官方关闭 side panel 的 API，用 setOptions({enabled:false})
+  // 临时禁用再恢复的 hack 实现收起（Chrome 114+）。
+  browser.runtime.onMessage.addListener((msg) => {
+    if (msg?.type !== 'PC_OPEN_FULL_PAGE') return;
+
+    void browser.tabs.create({ url: browser.runtime.getURL('/page.html') });
+
+    const sp = browser.sidePanel;
+    if (sp?.setOptions) {
+      sp.setOptions({ enabled: false })
+        .then(() => {
+          setTimeout(() => {
+            sp.setOptions({ enabled: true }).catch(() => {
+              /* 忽略 */
+            });
+          }, 120);
+        })
+        .catch(() => {
+          /* 忽略：某些浏览器/环境不支持 */
+        });
+    }
+  });
 });

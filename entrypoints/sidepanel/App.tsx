@@ -51,7 +51,8 @@ export default function App() {
   };
 
   const handleExpand = () => {
-    void browser.tabs.create({ url: browser.runtime.getURL('/page.html') });
+    // 通知 background：打开全页面并关闭当前侧边栏
+    void browser.runtime.sendMessage({ type: 'PC_OPEN_FULL_PAGE' });
   };
 
   return (
