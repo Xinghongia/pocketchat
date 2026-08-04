@@ -187,7 +187,7 @@ export default function App() {
               streaming={status === 'streaming'}
               placeholder={
                 hasProvider
-                  ? '输入消息，Enter 发送，Shift+Enter 换行'
+                  ? '输入消息，Enter 发送'
                   : '请先在设置中添加服务商'
               }
             />

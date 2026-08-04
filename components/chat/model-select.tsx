@@ -45,9 +45,11 @@ export function ModelSelect({ className }: ModelSelectProps) {
     <Select value={value} onValueChange={handleChange}>
       <SelectTrigger
         className={cn(
-          'h-7 w-auto gap-1 rounded-md border-transparent bg-transparent px-2 text-xs',
+          // 固定宽度：模型名长短不影响顶部栏布局，超长省略号截断
+          'h-7 w-[136px] gap-1 rounded-md border-transparent bg-transparent px-2 text-xs',
           'shadow-none hover:bg-accent hover:text-accent-foreground',
           'focus-visible:ring-1 data-[state=open]:bg-accent',
+          '[&>span]:min-w-0',
           className,
         )}
       >

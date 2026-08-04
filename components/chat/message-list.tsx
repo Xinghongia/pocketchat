@@ -99,7 +99,8 @@ export function MessageList({
     else userEls.current.delete(id);
   }, []);
 
-  // 当前显示的用户消息：用滚动进度映射到消息索引（顶部->第 0 条，底部->最后一条）
+  // 当前显示的用户消息：滚动时找「视口中心最近」的那条用户消息元素。
+  // 用元素实际位置而不是 scrollTop 比例映射：消息变多/容器高度变化时不会漂移，跟随更准。
   const updateActive = useCallback(() => {
     const container = scrollRef.current;
     const ids = userIdsRef.current;
@@ -107,13 +108,21 @@ export function MessageList({
       setActiveUIdx(-1);
       return;
     }
-    const maxScroll = container.scrollHeight - container.clientHeight;
-    const progress = maxScroll > 0 ? container.scrollTop / maxScroll : 0;
-    const active = Math.min(
-      ids.length - 1,
-      Math.max(0, Math.round(progress * (ids.length - 1))),
-    );
-    setActiveUIdx(active);
+    const cRect = container.getBoundingClientRect();
+    const centerY = cRect.top + cRect.height / 2;
+    let best = -1;
+    let bestDist = Infinity;
+    ids.forEach((id, i) => {
+      const el = userEls.current.get(id);
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const d = Math.abs(r.top + r.height / 2 - centerY);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    });
+    setActiveUIdx(best);
   }, []);
 
   // 新消息 / 流式增量 / 状态变化时滚动到底部
@@ -129,23 +138,27 @@ export function MessageList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // 滚动 / 窗口变化时更新指示条
+  // 滚动 / 尺寸变化时更新指示条。
+  // 不用 scroll 事件监听，改用 rAF 轮询对比 scrollTop / clientHeight / scrollHeight：
+  // 容器晚挂载（空状态早退）导致事件漏绑的情况天然免疫；
+  // 每帧只做属性对比，无变化不触发 updateActive，开销可忽略。
   useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
+    let lastTop = -1;
+    let lastH = -1;
+    let lastSH = -1;
     let raf = 0;
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(updateActive);
+    const tick = () => {
+      const c = scrollRef.current;
+      if (c && (c.scrollTop !== lastTop || c.clientHeight !== lastH || c.scrollHeight !== lastSH)) {
+        lastTop = c.scrollTop;
+        lastH = c.clientHeight;
+        lastSH = c.scrollHeight;
+        updateActive();
+      }
+      raf = requestAnimationFrame(tick);
     };
-    container.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-    updateActive();
-    return () => {
-      container.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
-      cancelAnimationFrame(raf);
-    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [updateActive]);
 
   // 点击指示条：平滑滚动到对应用户消息（居中）
@@ -167,14 +180,18 @@ export function MessageList({
 
   if (messages.length === 0) {
     return (
-      <div className={cn('flex-1 overflow-y-auto', className)}>
-        <EmptyState
-          hint={emptyHint}
-          compact={compact}
-          hasProvider={hasProvider}
-          onPick={onPick}
-          onOpenSettings={onOpenSettings}
-        />
+      // 空状态也渲染 scrollRef 容器：保证滚动容器从挂载起就存在，
+      // 否则滚动监听 effect 挂载时拿到 null 会漏绑，消息加载后指示条永不更新
+      <div className={cn('relative flex-1 overflow-hidden', className)}>
+        <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain">
+          <EmptyState
+            hint={emptyHint}
+            compact={compact}
+            hasProvider={hasProvider}
+            onPick={onPick}
+            onOpenSettings={onOpenSettings}
+          />
+        </div>
       </div>
     );
   }
@@ -241,7 +258,11 @@ export function MessageList({
                 key={m.id}
                 onClick={() => jumpTo(i)}
                 title={m.content.replace(/\s+/g, ' ').slice(0, 40)}
-                className={cn('h-1 cursor-pointer rounded-full transition-all duration-300', width, color)}
+                className={cn(
+                  'h-1 cursor-pointer rounded-full transition-all duration-150',
+                  width,
+                  color,
+                )}
               />
             );
           })}

@@ -26,7 +26,7 @@ export function MessageInput({
   onStop,
   streaming,
   disabled,
-  placeholder = '输入消息，Enter 发送，Shift+Enter 换行',
+  placeholder = '输入消息，Enter 发送',
   className,
   initialValue,
 }: MessageInputProps) {
@@ -89,6 +89,8 @@ export function MessageInput({
               'min-h-[28px] flex-1 resize-none bg-transparent px-1 py-1.5',
               'text-sm leading-relaxed text-foreground',
               'placeholder:text-muted-foreground/50',
+              // 占位文字强制单行：侧边栏宽度不足时省略号截断，不换行撑高输入框
+              'placeholder:whitespace-nowrap placeholder:overflow-hidden placeholder:text-ellipsis',
               'focus:outline-none disabled:opacity-50',
             )}
           />
