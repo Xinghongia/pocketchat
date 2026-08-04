@@ -111,9 +111,10 @@ export default defineContentScript({
               portalContainer={container}
               onClose={closePanel}
               onExpand={() => {
-                // 先收起悬浮窗，再打开全页面
-                closePanel();
-                void browser.tabs.create({ url: browser.runtime.getURL('/page.html') });
+                // 通知 background 打开全页面（顺带关闭侧边栏）。
+                // 消息会广播到所有 content script，本页监听器收到后自动收起悬浮窗
+                // （content script 环境无 tabs API，不能直接 tabs.create）。
+                void browser.runtime.sendMessage({ type: 'PC_OPEN_FULL_PAGE' });
               }}
             />,
           );
@@ -131,6 +132,15 @@ export default defineContentScript({
       if (ui) closePanel();
       else void openPanel();
     };
+
+    // ---------- 监听扩展消息 ----------
+    // PC_OPEN_FULL_PAGE：展开为全页面（含本页自己发的广播）→ 收起悬浮窗
+    // PC_CLOSE_FLOATING：外部请求关闭悬浮窗（兼容旧消息）
+    browser.runtime.onMessage.addListener((msg) => {
+      if (msg?.type === 'PC_OPEN_FULL_PAGE' || msg?.type === 'PC_CLOSE_FLOATING') {
+        closePanel();
+      }
+    });
 
     // ---------- 拖动（pointer events，区分点击与拖动） ----------
     let dragging = false;
