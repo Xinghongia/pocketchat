@@ -1,0 +1,7 @@
+feat: add floating widget and full-page modes
+
+- content script: draggable FAB (Shadow DOM, position memory) + isolated iframe panel
+- floating entry: compact chat UI with expand/close actions
+- full page entry (page.html): fixed conversation sidebar + fullscreen chat
+- ConversationList: support panel variant for full-page layout
+- sidepanel: add expand-to-full-page button

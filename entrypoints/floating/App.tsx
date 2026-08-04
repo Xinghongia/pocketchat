@@ -1,7 +1,133 @@
-import { Placeholder } from '@/components/placeholder';
+import { useEffect, useState } from 'react';
+import { Expand, List, X } from 'lucide-react';
+import { ChatShell } from '@/components/chat/chat-shell';
+import { ChatHeader } from '@/components/chat/chat-header';
+import { MessageList } from '@/components/chat/message-list';
+import { MessageInput } from '@/components/chat/message-input';
+import { ConversationList } from '@/components/chat/conversation-list';
+import { ModelSelect } from '@/components/chat/model-select';
+import { SettingsDialog } from '@/components/settings/settings-dialog';
+import { Button } from '@/components/ui/button';
+import { useChatStore } from '@/stores/chat';
+import { useSettingsStore } from '@/stores/settings';
+import { useTheme } from '@/lib/hooks/use-theme';
 
+/**
+ * 悬浮窗形态：网页内 iframe（约 380×560），紧凑模式。
+ * 复用全部聊天组件；顶部提供「展开为全页面」和「关闭」。
+ */
 export default function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [convOpen, setConvOpen] = useState(false);
+  useTheme();
+
+  const loadSettings = useSettingsStore((s) => s.load);
+  const loadConversations = useChatStore((s) => s.loadConversations);
+  useEffect(() => {
+    void loadSettings();
+    void loadConversations();
+  }, [loadSettings, loadConversations]);
+
+  const conversations = useChatStore((s) => s.conversations);
+  const activeId = useChatStore((s) => s.activeId);
+  const messages = useChatStore((s) => s.messages);
+  const status = useChatStore((s) => s.status);
+  const streamingMessageId = useChatStore((s) => s.streamingMessageId);
+  const openConversation = useChatStore((s) => s.openConversation);
+  const newConversation = useChatStore((s) => s.newConversation);
+  const removeConversation = useChatStore((s) => s.removeConversation);
+  const sendMessage = useChatStore((s) => s.sendMessage);
+  const stop = useChatStore((s) => s.stop);
+
+  const activeTitle = activeId
+    ? conversations.find((c) => c.id === activeId)?.title
+    : undefined;
+
+  const handleNewChat = async () => {
+    setConvOpen(false);
+    await newConversation();
+  };
+
+  const handleExpand = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL('/page.html') });
+  };
+
+  const handleClose = () => {
+    window.parent.postMessage({ source: 'pocketchat', type: 'close' }, '*');
+  };
+
   return (
-    <Placeholder title="PocketChat" hint="悬浮窗容器已就绪 · 聊天界面开发中" />
+    <ChatShell>
+      <ChatHeader
+        title={
+          <div className="flex min-w-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setConvOpen(true)}
+              title="对话记录"
+              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <span className="truncate">{activeTitle ?? 'PocketChat'}</span>
+          </div>
+        }
+        actions={
+          <>
+            <ModelSelect />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleExpand}
+              title="展开为全页面"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            >
+              <Expand className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleClose}
+              title="关闭"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </>
+        }
+        onNewChat={() => void handleNewChat()}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+
+      <MessageList
+        messages={messages}
+        status={status}
+        streamingMessageId={streamingMessageId}
+        compact
+        emptyHint="随时随地，问点什么吧"
+      />
+
+      <MessageInput
+        onSend={(text) => void sendMessage(text)}
+        onStop={stop}
+        streaming={status === 'streaming'}
+      />
+
+      <ConversationList
+        open={convOpen}
+        onClose={() => setConvOpen(false)}
+        conversations={conversations}
+        activeId={activeId}
+        onSelect={(id) => {
+          setConvOpen(false);
+          void openConversation(id);
+        }}
+        onNew={() => void handleNewChat()}
+        onDelete={(id) => void removeConversation(id)}
+      />
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+    </ChatShell>
   );
 }

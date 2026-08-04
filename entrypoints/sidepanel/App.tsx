@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { List } from 'lucide-react';
+import { Expand, List } from 'lucide-react';
 import { ChatShell } from '@/components/chat/chat-shell';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { MessageList } from '@/components/chat/message-list';
@@ -50,6 +50,10 @@ export default function App() {
     await newConversation();
   };
 
+  const handleExpand = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL('/page.html') });
+  };
+
   return (
     <ChatShell>
       <ChatHeader
@@ -67,7 +71,20 @@ export default function App() {
             <span className="truncate">{activeTitle ?? 'PocketChat'}</span>
           </div>
         }
-        actions={<ModelSelect />}
+        actions={
+          <>
+            <ModelSelect />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleExpand}
+              title="展开为全页面"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            >
+              <Expand className="h-4 w-4" />
+            </Button>
+          </>
+        }
         onNewChat={() => void handleNewChat()}
         onOpenSettings={() => setSettingsOpen(true)}
       />
