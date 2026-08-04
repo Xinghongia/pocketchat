@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Trash2, X } from 'lucide-react';
 import type { Conversation } from '@/lib/types';
 import { searchMessages, type SearchHit } from '@/lib/storage/db';
@@ -9,6 +10,10 @@ interface ConversationListProps {
   variant?: 'drawer' | 'panel';
   open?: boolean;
   onClose?: () => void;
+  /** panel 变体：是否处于折叠态（由外层 PanelGroup 控制） */
+  collapsed?: boolean;
+  /** panel 变体：切换折叠/展开 */
+  onToggleCollapse?: () => void;
   conversations: Conversation[];
   activeId: string | null;
   onSelect: (id: string) => void;
@@ -46,13 +51,15 @@ function Highlight({ text, keyword }: { text: string; keyword: string }) {
 /**
  * 会话列表 + 全文搜索。
  * - 顶部搜索框：输入即搜（防抖），命中显示消息片段，点击跳到对应会话
- * - drawer（默认）：左侧滑入抽屉，fixed 定位 + 遮罩，用于侧边栏/悬浮窗
- * - panel：普通 flex 布局的固定侧栏，用于全页面
+ * - drawer（默认）：左侧滑入抽屉（motion 动画），fixed 定位 + 遮罩，用于侧边栏/悬浮窗
+ * - panel：普通 flex 布局的固定侧栏（宽度/折叠由外层 react-resizable-panels 的 Group 控制）
  */
 export function ConversationList({
   variant = 'drawer',
   open,
   onClose,
+  collapsed,
+  onToggleCollapse,
   conversations,
   activeId,
   onSelect,
@@ -62,56 +69,6 @@ export function ConversationList({
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
-
-  // ---- panel 变体：可拖拽宽度 + 折叠（全页面用），宽度偏好存 localStorage ----
-  const [panelWidth, setPanelWidth] = useState(() => {
-    try {
-      const v = Number(localStorage.getItem('pc-sidebar-width'));
-      return v >= 200 && v <= 480 ? v : 240;
-    } catch {
-      return 240;
-    }
-  });
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('pc-sidebar-collapsed') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const [dragging, setDragging] = useState(false);
-  const dragStart = useRef<{ x: number; w: number } | null>(null);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('pc-sidebar-width', String(panelWidth));
-    } catch {
-      /* 忽略 */
-    }
-  }, [panelWidth]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('pc-sidebar-collapsed', collapsed ? '1' : '0');
-    } catch {
-      /* 忽略 */
-    }
-  }, [collapsed]);
-
-  const handleDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
-    dragStart.current = { x: e.clientX, w: panelWidth };
-    setDragging(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const handleDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = dragStart.current;
-    if (!d) return;
-    setPanelWidth(Math.min(480, Math.max(200, d.w + e.clientX - d.x)));
-  };
-  const handleDragEnd = () => {
-    dragStart.current = null;
-    setDragging(false);
-  };
 
   // 防抖搜索：300ms
   useEffect(() => {
@@ -142,28 +99,36 @@ export function ConversationList({
   const header = (
     <div className="flex h-12 shrink-0 items-center justify-between px-3">
       <span className="truncate text-sm font-semibold tracking-tight">对话记录</span>
-      {variant === 'drawer' ? (
+      <div className="flex shrink-0 items-center gap-0.5">
         <button
-          onClick={onClose}
+          onClick={onNew}
+          title="新建对话"
           className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          <X className="h-4 w-4" />
+          <Plus className="h-4 w-4" />
         </button>
-      ) : (
-        <button
-          onClick={() => setCollapsed(true)}
-          title="收起侧栏"
-          className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <PanelLeftClose className="h-4 w-4" />
-        </button>
-      )}
+        {variant === 'drawer' ? (
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            onClick={onToggleCollapse}
+            title="收起侧栏"
+            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 
   const content = (
     <>
-
       {/* 搜索框 */}
       <div className="px-3 pt-3">
         <div className="relative">
@@ -263,34 +228,16 @@ export function ConversationList({
           </ul>
         )}
       </div>
-
-      {/* 搜索模式下隐藏新建按钮，避免误触 */}
-      {!isSearching && (
-        <button
-          onClick={onNew}
-          className="mx-3 mb-3 flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2 text-[13px] text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/50 hover:text-foreground"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          新建对话
-        </button>
-      )}
     </>
   );
 
   if (variant === 'panel') {
     return (
-      <aside
-        className={cn(
-          'relative flex h-full shrink-0 flex-col bg-background',
-          !collapsed && 'border-r',
-          dragging ? '' : 'transition-[width] duration-150',
-        )}
-        style={{ width: collapsed ? 44 : panelWidth }}
-      >
+      <aside className="flex h-full flex-col overflow-hidden bg-background">
         {collapsed ? (
           <div className="flex h-12 shrink-0 items-center justify-center">
             <button
-              onClick={() => setCollapsed(false)}
+              onClick={onToggleCollapse}
               title="展开侧栏"
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
@@ -303,37 +250,36 @@ export function ConversationList({
             {content}
           </>
         )}
-        {!collapsed && (
-          <div
-            className="absolute inset-y-0 -right-[3px] z-10 w-1.5 cursor-col-resize hover:bg-primary/50 active:bg-primary/70"
-            onPointerDown={handleDragStart}
-            onPointerMove={handleDragMove}
-            onPointerUp={handleDragEnd}
-            onPointerCancel={handleDragEnd}
-            title="拖拽调整宽度"
-          />
-        )}
       </aside>
     );
   }
 
   return (
-    <>
+    <AnimatePresence>
       {open && (
-        <div
-          className="fixed inset-0 z-40 bg-black/30 animate-[pc-fade-in_0.15s_ease-out]"
-          onClick={onClose}
-        />
+        <>
+          <motion.div
+            key="conv-overlay"
+            className="fixed inset-0 z-40 bg-black/30"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={onClose}
+          />
+          <motion.aside
+            key="conv-drawer"
+            className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r bg-background shadow-xl"
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
+            transition={{ type: 'spring', stiffness: 400, damping: 38 }}
+          >
+            {header}
+            {content}
+          </motion.aside>
+        </>
       )}
-      <aside
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r bg-background shadow-xl transition-transform duration-200',
-          open ? 'translate-x-0' : '-translate-x-full',
-        )}
-      >
-        {header}
-        {content}
-      </aside>
-    </>
+    </AnimatePresence>
   );
 }

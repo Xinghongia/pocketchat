@@ -8,6 +8,8 @@
  */
 import { createRoot, type Root } from 'react-dom/client';
 import { createShadowRootUi } from 'wxt/utils/content-script-ui/shadow-root';
+import { computePosition, flip, offset, shift } from '@floating-ui/dom';
+import interact from 'interactjs';
 import { FloatingApp } from '@/components/floating-app';
 import '@/assets/main.css';
 import { setPendingPrompt } from '@/lib/pending-prompt';
@@ -203,7 +205,7 @@ export default defineContentScript({
           font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
           font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap;
           cursor: pointer; box-shadow: 0 4px 16px rgba(0, 0, 0, .28);
-          transform: translate(-50%, -100%);
+          transform: translateX(-50%);
           opacity: 0; pointer-events: none;
           transition: opacity .12s ease;
           user-select: none; -webkit-user-select: none;
@@ -249,13 +251,18 @@ export default defineContentScript({
       ensureToolbar();
       const bar = toolbarShadow?.querySelector<HTMLElement>('.pc-bar');
       if (!bar) return;
-      // 浮条居中对齐选区，钳制在视口内
-      const left = Math.min(Math.max(rect.left + rect.width / 2, 70), window.innerWidth - 70);
-      const top = Math.max(rect.top - 10, 8);
-      bar.style.left = `${left}px`;
-      bar.style.top = `${top}px`;
-      bar.style.opacity = '1';
-      bar.style.pointerEvents = 'auto';
+      // Floating UI：以上方弹出为主，空间不足自动翻转到底部，并防溢出视口
+      const virtualEl = { getBoundingClientRect: () => rect };
+      void computePosition(virtualEl, bar, {
+        strategy: 'fixed',
+        placement: 'top',
+        middleware: [offset(10), flip({ padding: 8 }), shift({ padding: 8 })],
+      }).then(({ x, y }) => {
+        bar.style.left = `${x}px`;
+        bar.style.top = `${y}px`;
+        bar.style.opacity = '1';
+        bar.style.pointerEvents = 'auto';
+      });
       barVisible = true;
     };
 
@@ -284,51 +291,44 @@ export default defineContentScript({
       if (e.target instanceof Node && e.target.getRootNode() !== toolbarShadow) hideToolbar();
     });
 
-    // ---------- 拖动（pointer events，区分点击与拖动） ----------
-    let dragging = false;
+    // ---------- 悬浮按钮拖动（interact.js：区分点击与拖动，惯性/边界交给库处理） ----------
     let moved = false;
     let startX = 0;
     let startY = 0;
     let origRight = 0;
     let origBottom = 0;
 
-    fab.addEventListener('pointerdown', (e) => {
-      dragging = true;
-      moved = false;
-      startX = e.clientX;
-      startY = e.clientY;
-      const r = fab.getBoundingClientRect();
-      origRight = window.innerWidth - r.right;
-      origBottom = window.innerHeight - r.bottom;
-      fab.setPointerCapture(e.pointerId);
-    });
-
-    fab.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
-      if (moved) {
-        const right = Math.min(Math.max(origRight - dx, 8), window.innerWidth - 8);
-        const bottom = Math.min(Math.max(origBottom - dy, 8), window.innerHeight - 8);
-        fab.style.right = `${right}px`;
-        fab.style.bottom = `${bottom}px`;
-      }
-    });
-
-    fab.addEventListener('pointerup', () => {
-      dragging = false;
-      if (moved) {
-        savePos();
-      } else {
-        togglePanel();
-      }
-      moved = false;
-    });
-
-    fab.addEventListener('pointercancel', () => {
-      dragging = false;
-      moved = false;
+    interact(fab).draggable({
+      inertia: true,
+      listeners: {
+        start(event) {
+          moved = false;
+          startX = event.clientX;
+          startY = event.clientY;
+          const r = fab.getBoundingClientRect();
+          origRight = window.innerWidth - r.right;
+          origBottom = window.innerHeight - r.bottom;
+        },
+        move(event) {
+          const dx = event.clientX - startX;
+          const dy = event.clientY - startY;
+          if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+          if (moved) {
+            const right = Math.min(Math.max(origRight - dx, 8), window.innerWidth - 8);
+            const bottom = Math.min(Math.max(origBottom - dy, 8), window.innerHeight - 8);
+            fab.style.right = `${right}px`;
+            fab.style.bottom = `${bottom}px`;
+          }
+        },
+        end() {
+          if (moved) {
+            savePos();
+          } else {
+            togglePanel();
+          }
+          moved = false;
+        },
+      },
     });
   },
 });

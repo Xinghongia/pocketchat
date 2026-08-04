@@ -105,15 +105,6 @@
   }
 }
 
-@keyframes pc-slide-in-right {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
 @keyframes pc-blink {
   0%,
   100% {

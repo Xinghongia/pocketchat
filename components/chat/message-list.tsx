@@ -1,8 +1,45 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { motion } from 'motion/react';
 import type { ChatMessage, StreamStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { MessageItem } from './message-item';
 import { EmptyState } from './empty-state';
+
+/** 判断两个时间戳是否同一天（本地时区） */
+function isSameDay(a: number, b: number) {
+  const da = new Date(a);
+  const db = new Date(b);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}
+
+/** 时间分组标签：今天 / 昨天 / M月D日 / YYYY年M月D日 */
+function dayLabel(ts: number) {
+  const d = new Date(ts);
+  const now = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOf(now) - startOf(d)) / 86400000);
+  if (diffDays === 0) return '今天';
+  if (diffDays === 1) return '昨天';
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  return y === now.getFullYear() ? `${m}月${day}日` : `${y}年${m}月${day}日`;
+}
+
+/** 时间分隔线：两侧淡线 + 居中日期标签 */
+function DayDivider({ ts }: { ts: number }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2">
+      <div className="h-px flex-1 bg-border/50" />
+      <span className="select-none text-[11px] text-muted-foreground/60">{dayLabel(ts)}</span>
+      <div className="h-px flex-1 bg-border/50" />
+    </div>
+  );
+}
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -145,19 +182,32 @@ export function MessageList({
   return (
     <div className={cn('relative flex-1 overflow-hidden', className)}>
       <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain">
-        <div className="mx-auto w-full max-w-3xl">
+        <div className="mx-auto w-full max-w-5xl">
           <div className={cn(compact ? 'py-2' : 'py-3')}>
-            {messages.map((m) => (
-              <MessageItem
-                key={m.id}
-                message={m}
-                compact={compact}
-                streaming={m.id === streamingMessageId && status === 'streaming'}
-                onRegenerate={onRegenerate}
-                onEdit={onEdit}
-                rootRef={m.role === 'user' ? setUserRef(m.id) : undefined}
-              />
-            ))}
+            {messages.map((m, i) => {
+              const prev = messages[i - 1];
+              const showDivider = !prev || !isSameDay(prev.createdAt, m.createdAt);
+              return (
+                <Fragment key={m.id}>
+                  {showDivider && <DayDivider ts={m.createdAt} />}
+                  {/* 消息入场：淡入 + 轻微上移（流式增量更新不重播，仅新插入时播一次） */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <MessageItem
+                      message={m}
+                      compact={compact}
+                      streaming={m.id === streamingMessageId && status === 'streaming'}
+                      onRegenerate={onRegenerate}
+                      onEdit={onEdit}
+                      rootRef={m.role === 'user' ? setUserRef(m.id) : undefined}
+                    />
+                  </motion.div>
+                </Fragment>
+              );
+            })}
             <div ref={bottomRef} className="h-px" />
           </div>
         </div>
@@ -176,7 +226,7 @@ export function MessageList({
             // 悬停时以鼠标位置为中心，否则以当前显示为中心
             const center = hoverIdx >= 0 ? hoverIdx : activeUIdx;
             const dist = center < 0 ? 99 : Math.abs(i - center);
-            // 4 个梯度：距离 0/1/2/≥3 -> 最长/次长/中/最短
+            // 4 个梯度：距离 0/1/2/≥3 -> 最长/次长/中/最短（CSS 过渡平滑，跟随滚动即时更新）
             const width = dist === 0 ? 'w-8' : dist === 1 ? 'w-6' : dist === 2 ? 'w-4' : 'w-2';
             const color =
               dist === 0
@@ -191,7 +241,7 @@ export function MessageList({
                 key={m.id}
                 onClick={() => jumpTo(i)}
                 title={m.content.replace(/\s+/g, ' ').slice(0, 40)}
-                className={cn('h-1 rounded-full transition-all duration-300', width, color)}
+                className={cn('h-1 cursor-pointer rounded-full transition-all duration-300', width, color)}
               />
             );
           })}
