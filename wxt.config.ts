@@ -17,12 +17,5 @@ export default defineConfig({
     action: {
       default_title: 'PocketChat',
     },
-    // 悬浮窗 iframe 由内容脚本注入普通网页，需声明为 web_accessible_resources
-    web_accessible_resources: [
-      {
-        resources: ['floating.html'],
-        matches: ['<all_urls>'],
-      },
-    ],
   },
 });

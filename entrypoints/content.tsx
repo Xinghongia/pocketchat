@@ -1,13 +1,22 @@
 /**
- * 悬浮窗机制：
- * - 在网页右下角注入一个可拖动的悬浮按钮（Shadow DOM 隔离样式，不受网站 CSS 污染）；
- * - 点击按钮在按钮上方弹出「隔离 iframe」（加载扩展自己的 floating.html，与网页完全隔离）；
- * - 按钮可自由拖动，位置记忆到 chrome.storage.local；
- * - 监听 iframe 内发来的 close 消息，收起悬浮窗。
+ * 悬浮窗机制（Shadow Root UI 方案）：
+ * - 在网页右下角注入一个可拖动的悬浮按钮（Shadow DOM 隔离样式）；
+ * - 点击按钮，用 WXT 的 createShadowRootUi 把 PocketChat 的 React 应用
+ *   挂载进一个 Shadow Root（隔离 iframe 不可靠：很多网站的 CSP 会拦截
+ *   chrome-extension:// 的 iframe，Shadow Root 方案完全绕开该问题）；
+ * - 按钮可拖动，位置记忆到 chrome.storage.local。
  */
+import { createRoot, type Root } from 'react-dom/client';
+import { createShadowRootUi } from 'wxt/utils/content-script-ui/shadow-root';
+import { FloatingApp } from '@/components/floating-app';
+import '@/assets/main.css';
+
+type FloatingUi = Awaited<ReturnType<typeof createShadowRootUi<Root>>>;
+
 export default defineContentScript({
   matches: ['<all_urls>'],
-  main() {
+  cssInjectionMode: 'ui',
+  main(ctx) {
     const HOST_ID = 'pocketchat-host';
     if (document.getElementById(HOST_ID)) return;
     if (!document.documentElement) return;
@@ -33,19 +42,6 @@ export default defineContentScript({
       #fab:hover { transform: scale(1.06); box-shadow: 0 10px 28px rgba(99, 102, 241, .5); }
       #fab:active { transform: scale(.96); }
       #fab svg { width: 22px; height: 22px; pointer-events: none; }
-      #panel {
-        position: fixed; z-index: 2147483647;
-        width: 380px; height: 560px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
-        border: 1px solid rgba(0,0,0,.08); border-radius: 16px; overflow: hidden;
-        box-shadow: 0 24px 64px rgba(0,0,0,.28);
-        background: #fff; display: none;
-      }
-      #panel.open { display: block; animation: pc-pop .18s ease; }
-      #panel iframe { width: 100%; height: 100%; border: none; }
-      @keyframes pc-pop {
-        from { opacity: 0; transform: translateY(10px) scale(.98); }
-        to { opacity: 1; transform: none; }
-      }
     `;
     shadow.appendChild(style);
 
@@ -54,18 +50,11 @@ export default defineContentScript({
     fab.id = 'fab';
     fab.title = 'PocketChat';
     fab.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3z"/></svg>`;
-
-    // 隔离 iframe：加载扩展页面 floating.html（已在 manifest 声明为可访问资源）
-    const panel = document.createElement('iframe');
-    panel.id = 'panel';
-    panel.src = browser.runtime.getURL('/floating.html');
-
-    shadow.append(fab, panel);
+    shadow.appendChild(fab);
     document.documentElement.appendChild(host);
 
     // ---------- 位置记忆 ----------
     const POS_KEY = 'pocketchat.floating.pos';
-    const FRAME_W = 380;
     let saved = { right: 20, bottom: 20 };
     void browser.storage.local.get(POS_KEY).then((res) => {
       const pos = res[POS_KEY] as { right?: number; bottom?: number } | undefined;
@@ -83,24 +72,64 @@ export default defineContentScript({
       void browser.storage.local.set({ [POS_KEY]: saved });
     };
 
-    // ---------- 悬浮窗定位：在按钮上方弹出 ----------
-    const positionPanel = () => {
+    // ---------- 悬浮面板（Shadow Root UI） ----------
+    const FRAME_W = 380;
+    const FRAME_H = 560;
+    let ui: FloatingUi | null = null;
+
+    const computePanelPos = () => {
       const r = fab.getBoundingClientRect();
       const w = Math.min(FRAME_W, window.innerWidth - 16);
-      const h = Math.min(560, window.innerHeight - 16);
-      let right = window.innerWidth - r.right;
-      let bottom = window.innerHeight - r.top + 10;
-      right = Math.max(8, Math.min(right, window.innerWidth - w - 8));
-      bottom = Math.max(8, Math.min(bottom, window.innerHeight - 8));
-      panel.style.right = `${right}px`;
-      panel.style.bottom = `${bottom}px`;
-      panel.style.width = `${w}px`;
-      panel.style.height = `${h}px`;
+      const h = Math.min(FRAME_H, window.innerHeight - 16);
+      let right = Math.max(8, Math.min(window.innerWidth - r.right, window.innerWidth - w - 8));
+      let bottom = Math.min(window.innerHeight - r.top + 10, window.innerHeight - h - 8);
+      bottom = Math.max(8, bottom);
+      return { right, bottom, w, h };
     };
 
-    const toggle = () => {
-      if (!panel.classList.contains('open')) positionPanel();
-      panel.classList.toggle('open');
+    const closePanel = () => {
+      if (ui) {
+        ui.remove();
+        ui = null;
+      }
+    };
+
+    const openPanel = async () => {
+      if (ui) return;
+      const pos = computePanelPos();
+      const panelUi = await createShadowRootUi(ctx, {
+        name: 'pocketchat-floating',
+        position: 'overlay',
+        zIndex: 2147483647,
+        anchor: document.documentElement,
+        alignment: 'top-left',
+        onMount(container) {
+          const root = createRoot(container);
+          root.render(
+            <FloatingApp
+              position={pos}
+              portalContainer={container}
+              onClose={closePanel}
+              onExpand={() => {
+                // 先收起悬浮窗，再打开全页面
+                closePanel();
+                void browser.tabs.create({ url: browser.runtime.getURL('/page.html') });
+              }}
+            />,
+          );
+          return root;
+        },
+        onRemove(root) {
+          root?.unmount();
+        },
+      });
+      panelUi.mount();
+      ui = panelUi;
+    };
+
+    const togglePanel = () => {
+      if (ui) closePanel();
+      else void openPanel();
     };
 
     // ---------- 拖动（pointer events，区分点击与拖动） ----------
@@ -140,7 +169,7 @@ export default defineContentScript({
       if (moved) {
         savePos();
       } else {
-        toggle();
+        togglePanel();
       }
       moved = false;
     });
@@ -148,20 +177,6 @@ export default defineContentScript({
     fab.addEventListener('pointercancel', () => {
       dragging = false;
       moved = false;
-    });
-
-    // ---------- 监听 iframe 内「关闭」消息 ----------
-    window.addEventListener('message', (e) => {
-      if (e.data?.source === 'pocketchat' && e.data?.type === 'close') {
-        panel.classList.remove('open');
-      }
-    });
-
-    // ---------- 监听扩展页面发来的关闭消息（如「展开为全页面」时） ----------
-    browser.runtime.onMessage.addListener((msg) => {
-      if (msg?.type === 'PC_CLOSE_FLOATING') {
-        panel.classList.remove('open');
-      }
     });
   },
 });

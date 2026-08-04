@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePortalContainer } from '@/lib/portal-context';
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -32,35 +33,38 @@ interface DialogContentProps
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, children, showClose = true, ...props }, ref) => (
-  <DialogPrimitive.Portal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2',
-        'rounded-xl border bg-popover text-popover-foreground shadow-xl',
-        'animate-[pc-scale-in_0.15s_ease-out]',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      {showClose && (
-        <DialogPrimitive.Close
-          className={cn(
-            'absolute right-3.5 top-3.5 rounded-md p-1 text-muted-foreground transition-colors',
-            'hover:bg-accent hover:text-accent-foreground',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-          )}
-        >
-          <X className="h-4 w-4" />
-          <span className="sr-only">关闭</span>
-        </DialogPrimitive.Close>
-      )}
-    </DialogPrimitive.Content>
-  </DialogPrimitive.Portal>
-));
+>(({ className, children, showClose = true, ...props }, ref) => {
+  const container = usePortalContainer();
+  return (
+    <DialogPrimitive.Portal container={container ?? undefined}>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          'fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2',
+          'rounded-xl border bg-popover text-popover-foreground shadow-xl',
+          'animate-[pc-scale-in_0.15s_ease-out]',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        {showClose && (
+          <DialogPrimitive.Close
+            className={cn(
+              'absolute right-3.5 top-3.5 rounded-md p-1 text-muted-foreground transition-colors',
+              'hover:bg-accent hover:text-accent-foreground',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+            )}
+          >
+            <X className="h-4 w-4" />
+            <span className="sr-only">关闭</span>
+          </DialogPrimitive.Close>
+        )}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  );
+});
 DialogContent.displayName = 'DialogContent';
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
