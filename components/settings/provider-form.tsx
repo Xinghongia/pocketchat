@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import type { ProviderConfig } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { fetchModelList } from '@/lib/api/client';
+import { cn } from '@/lib/utils';
 
 interface ProviderFormProps {
   /** 传入则编辑，null 则新建 */
@@ -20,9 +23,30 @@ export function ProviderForm({ initial, onSave, onCancel }: ProviderFormProps) {
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? '');
   const [apiKey, setApiKey] = useState(initial?.apiKey ?? '');
   const [models, setModels] = useState((initial?.models ?? []).join(', '));
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   const isBuiltin = initial?.builtin;
   const canSave = name.trim() && baseUrl.trim() && models.trim();
+
+  const canFetch = baseUrl.trim().length > 0 && !fetching;
+
+  const handleFetchModels = async () => {
+    if (!canFetch) return;
+    setFetching(true);
+    setFetchError('');
+    try {
+      const list = await fetchModelList({
+        baseUrl: baseUrl.trim(),
+        apiKey: apiKey.trim() || undefined,
+      });
+      setModels(list.join(', '));
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : '获取模型列表失败');
+    } finally {
+      setFetching(false);
+    }
+  };
 
   const handleSubmit = () => {
     if (!canSave) return;
@@ -86,13 +110,38 @@ export function ProviderForm({ initial, onSave, onCancel }: ProviderFormProps) {
       </div>
 
       <div className="grid gap-1.5">
-        <Label>模型列表</Label>
+        <div className="flex items-center justify-between">
+          <Label>模型列表</Label>
+          <button
+            type="button"
+            onClick={() => void handleFetchModels()}
+            disabled={!canFetch}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px]',
+              'text-primary transition-colors hover:bg-accent',
+              'disabled:cursor-not-allowed disabled:opacity-50',
+            )}
+            title="从服务商拉取模型列表"
+          >
+            {fetching ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            获取模型列表
+          </button>
+        </div>
         <Input
           value={models}
           onChange={(e) => setModels(e.target.value)}
           placeholder="gpt-4o, gpt-4o-mini"
+          className={fetchError ? 'border-destructive' : undefined}
         />
-        <p className="text-[11px] text-muted-foreground/70">多个模型用逗号分隔</p>
+        {fetchError ? (
+          <p className="text-[11px] text-destructive">{fetchError}</p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground/70">多个模型用逗号分隔，或点右上角自动获取</p>
+        )}
       </div>
 
       <div className="mt-1 flex justify-end gap-2">

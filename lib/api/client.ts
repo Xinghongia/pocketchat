@@ -88,6 +88,50 @@ export async function chatCompletionOnce(
 }
 
 /**
+ * 拉取服务商的模型列表（GET /models，OpenAI 兼容）。
+ * 返回模型 ID 数组；失败时抛出带原因的 Error。
+ */
+export async function fetchModelList(provider: {
+  baseUrl: string;
+  apiKey?: string;
+}): Promise<string[]> {
+  const url = `${provider.baseUrl.replace(/\/+$/, '')}/models`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      headers: buildHeaders(provider as ProviderConfig),
+    });
+  } catch (err) {
+    throw new Error(err instanceof Error ? err.message : '网络请求失败');
+  }
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = (await res.json()) as { error?: { message?: string } };
+      detail = body.error?.message ?? '';
+    } catch {
+      /* 忽略响应体解析失败 */
+    }
+    throw new Error(`服务商返回 ${res.status}${detail ? `：${detail}` : ''}`);
+  }
+
+  try {
+    const json = (await res.json()) as { data?: Array<{ id?: string }> };
+    const models = (json.data ?? [])
+      .map((m) => m.id?.trim())
+      .filter((id): id is string => Boolean(id));
+    if (models.length === 0) throw new Error('服务商未返回任何模型');
+    return models;
+  } catch (err) {
+    if (err instanceof SyntaxError) throw new Error('服务商返回了无法解析的响应');
+    throw err;
+  }
+}
+
+/**
  * OpenAI 兼容的流式对话客户端。
  * 返回异步生成器：逐段产出 delta / reasoning / done / error 事件。
  * 在扩展的 content script / 页面上下文中运行，避免 Service Worker 休眠中断流。
