@@ -1,0 +1,127 @@
+@import 'tailwindcss';
+
+/*
+ * PocketChat 设计令牌（Design Tokens）
+ * 基于 oklch 的简洁中性色 + 靛紫主色，支持明暗双主题。
+ * 后续所有页面统一从这里取色，保证「简洁、优雅、美观」。
+ */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(0.985 0.002 247.839);
+  --foreground: oklch(0.21 0.006 285.885);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.006 285.885);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.006 285.885);
+  --primary: oklch(0.585 0.233 277.117);
+  --primary-foreground: oklch(0.985 0.002 247.839);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.955 0.023 277.127);
+  --accent-foreground: oklch(0.457 0.24 277.023);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0.002 247.839);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.585 0.233 277.117);
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0.002 247.839);
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.985 0.002 247.839);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0.002 247.839);
+  --primary: oklch(0.645 0.213 277.117);
+  --primary-foreground: oklch(0.141 0.005 285.823);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0.002 247.839);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.335 0.05 277.117);
+  --accent-foreground: oklch(0.985 0.002 247.839);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0.002 247.839);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.645 0.213 277.117);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans:
+    'Inter', 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei',
+    system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-primary) 25%, transparent);
+  }
+
+  /* 优雅的细滚动条 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--color-muted-foreground) 35%, transparent) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--color-muted-foreground) 35%, transparent);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
