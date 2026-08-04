@@ -1,5 +1,6 @@
 import { Sparkles } from 'lucide-react';
 import { useSettingsStore, selectActiveProvider } from '@/stores/settings';
+import { useChatStore } from '@/stores/chat';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
@@ -9,21 +10,39 @@ interface ModelSelectProps {
 
 /**
  * 模型选择器：显示当前模型，点击切换。
- * 自动跟随当前服务商的模型列表；未配置时显示提示。
+ * - 会话有模型记忆（该会话最近一次发送用的模型）时，显示并切换会话记忆；
+ * - 无记忆（新会话）时回退全局设置，此时切换写入全局。
+ * 切换会话自动恢复各自记忆的模型。
  */
 export function ModelSelect({ className }: ModelSelectProps) {
   const settings = useSettingsStore((s) => s.settings);
   const setActive = useSettingsStore((s) => s.setActive);
+  const activeId = useChatStore((s) => s.activeId);
+  const convProviderId = useChatStore((s) => s.convProviderId);
+  const convModel = useChatStore((s) => s.convModel);
+  const setConversationModel = useChatStore((s) => s.setConversationModel);
 
-  const provider = selectActiveProvider(settings);
+  const globalProvider = selectActiveProvider(settings);
+  const convProvider = convProviderId
+    ? (settings?.providers.find((p) => p.id === convProviderId) ?? null)
+    : null;
+  const provider = convProvider ?? globalProvider;
   const models = provider?.models ?? [];
 
+  // 会话记忆优先；记忆的模型不在列表（服务商已更新）时回退全局
+  const value =
+    convProvider && convModel && models.includes(convModel)
+      ? convModel
+      : (settings?.activeModel ?? '');
+
   const handleChange = (model: string) => {
-    if (provider) void setActive(provider.id, model);
+    if (!provider) return;
+    if (activeId) void setConversationModel(provider.id, model);
+    else void setActive(provider.id, model);
   };
 
   return (
-    <Select value={settings?.activeModel ?? ''} onValueChange={handleChange}>
+    <Select value={value} onValueChange={handleChange}>
       <SelectTrigger
         className={cn(
           'h-7 w-auto gap-1 rounded-md border-transparent bg-transparent px-2 text-xs',

@@ -14,6 +14,8 @@ interface MessageItemProps {
   onRegenerate?: (messageId: string) => void;
   /** 编辑该用户消息 */
   onEdit?: (messageId: string, content: string) => void;
+  /** 根元素回调 ref（右侧指示条用来定位用户消息） */
+  rootRef?: (el: HTMLDivElement | null) => void;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -99,6 +101,7 @@ export const MessageItem = memo(function MessageItem({
   compact,
   onRegenerate,
   onEdit,
+  rootRef,
 }: MessageItemProps) {
   const isUser = message.role === 'user';
   const [editing, setEditing] = useState(false);
@@ -125,7 +128,7 @@ export const MessageItem = memo(function MessageItem({
     // 编辑模式：内联文本框 + 保存/取消
     if (editing) {
       return (
-        <div className={cn('flex justify-end', compact ? 'px-2 py-1.5' : 'px-4 py-2.5')}>
+        <div ref={rootRef} className={cn('flex justify-end', compact ? 'px-2 py-1.5' : 'px-4 py-2.5')}>
           <div className="w-full max-w-[85%]">
             <textarea
               ref={taRef}
@@ -166,7 +169,7 @@ export const MessageItem = memo(function MessageItem({
     }
 
     return (
-      <div className={cn('group flex justify-end', compact ? 'px-2 py-1.5' : 'px-4 py-2.5')}>
+      <div ref={rootRef} className={cn('group flex justify-end', compact ? 'px-2 py-1.5' : 'px-4 py-2.5')}>
         <div className="min-w-0 max-w-[85%]">
           <div
             className={cn(
@@ -196,7 +199,7 @@ export const MessageItem = memo(function MessageItem({
   }
 
   return (
-    <div className={cn('group flex w-full items-start gap-2.5', compact ? 'px-2 py-1.5' : 'px-4 py-2.5')}>
+    <div ref={rootRef} className={cn('group flex w-full items-start gap-2.5', compact ? 'px-2 py-1.5' : 'px-4 py-2.5')}>
       {/* 头像 */}
       <div
         className={cn(

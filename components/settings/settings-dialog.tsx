@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import { Monitor, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react';
+import { Download, FileJson, FileText, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react';
 import type { ProviderConfig, StreamMode } from '@/lib/types';
 import { useSettingsStore } from '@/stores/settings';
+import { useChatStore } from '@/stores/chat';
+import { exportAllJson, exportConversationMarkdown } from '@/lib/export';
+import { clearAll } from '@/lib/storage/db';
 import {
   Dialog,
   DialogContent,
@@ -50,11 +53,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const addProvider = useSettingsStore((s) => s.addProvider);
   const updateProvider = useSettingsStore((s) => s.updateProvider);
   const removeProvider = useSettingsStore((s) => s.removeProvider);
+  const activeId = useChatStore((s) => s.activeId);
+  const chatMessages = useChatStore((s) => s.messages);
+  const conversations = useChatStore((s) => s.conversations);
 
   const [editing, setEditing] = useState<ProviderConfig | null | undefined>(undefined);
 
   const providers = settings?.providers ?? [];
   const activeProvider = providers.find((p) => p.id === settings?.activeProviderId);
+
+  const activeConv = conversations.find((c) => c.id === activeId) ?? null;
 
   const handleSaveProvider = (p: ProviderConfig) => {
     if (p.builtin) {
@@ -270,6 +278,59 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     </button>
                   );
                 })}
+              </div>
+            </section>
+
+            {/* 数据 */}
+            <section className="space-y-2.5">
+              <h3 className="text-[13px] font-medium text-foreground">数据</h3>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => void exportAllJson()}
+                  className="flex w-full items-center gap-2 rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-accent/40"
+                >
+                  <FileJson className="h-4 w-4 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium leading-tight">导出全部数据</p>
+                    <p className="text-[11px] text-muted-foreground/80">
+                      所有会话导出为 JSON（可备份 / 迁移）
+                    </p>
+                  </div>
+                  <Download className="h-3.5 w-3.5 text-muted-foreground/60" />
+                </button>
+
+                <button
+                  onClick={() => exportConversationMarkdown(activeConv, chatMessages)}
+                  disabled={!activeId || chatMessages.length === 0}
+                  className="flex w-full items-center gap-2 rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium leading-tight">导出当前会话</p>
+                    <p className="text-[11px] text-muted-foreground/80">
+                      当前对话导出为 Markdown（可分享）
+                    </p>
+                  </div>
+                  <Download className="h-3.5 w-3.5 text-muted-foreground/60" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (window.confirm('确定清空所有对话记录？此操作不可恢复！')) {
+                      void clearAll();
+                      window.location.reload();
+                    }
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg border border-destructive/30 px-3 py-2 text-left transition-colors hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium leading-tight text-destructive">清空所有数据</p>
+                    <p className="text-[11px] text-muted-foreground/80">
+                      删除全部会话与消息，不可恢复
+                    </p>
+                  </div>
+                </button>
               </div>
             </section>
           </div>

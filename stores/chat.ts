@@ -4,6 +4,7 @@ import {
   listConversations,
   createConversation,
   deleteConversation,
+  updateConversationModel,
   listMessages,
   saveMessage,
   updateMessage,
@@ -23,11 +24,16 @@ interface ChatState {
   /** 当前流式消息的 id（用于流式回写） */
   streamingMessageId: string | null;
   abortController: AbortController | null;
+  /** 会话级模型记忆：当前会话使用的服务商/模型（无记忆时为 null，回退全局设置） */
+  convProviderId: string | null;
+  convModel: string | null;
 
   loadConversations: () => Promise<void>;
   openConversation: (id: string) => Promise<void>;
   newConversation: () => Promise<void>;
   removeConversation: (id: string) => Promise<void>;
+  /** 记录当前会话使用的模型（写库 + 更新内存覆盖值） */
+  setConversationModel: (providerId: string, model: string) => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
   /** 重新生成某条 AI 回复：截断其后所有消息并重新请求 */
   regenerate: (messageId: string) => Promise<void>;
@@ -44,6 +50,38 @@ export function useHasProvider(): boolean {
   return !!selectActiveProvider(settings);
 }
 
+/**
+ * 解析当前生效的服务商与模型：
+ * 会话有记忆且服务商/模型仍有效 -> 用会话记忆；否则回退全局设置。
+ * 在模块顶层定义、函数体内才读取 store，避免循环依赖。
+ */
+function resolveActiveModel(): { provider: ProviderConfig | null; model: string } {
+  const { settings } = useSettingsStore.getState();
+  const { convProviderId, convModel } = useChatStore.getState();
+  const globalProvider = selectActiveProvider(settings);
+  const convProvider = convProviderId
+    ? (settings?.providers.find((p) => p.id === convProviderId) ?? null)
+    : null;
+  const provider = convProvider ?? globalProvider;
+  if (!provider) return { provider: null, model: '' };
+  // 模型列表为空（未拉取/手动填写）时信任记忆，不校验 includes
+  const model =
+    convProvider && convModel && (provider.models.length === 0 || provider.models.includes(convModel))
+      ? convModel
+      : (settings?.activeModel ?? provider.models[0] ?? '');
+  return { provider, model };
+}
+
+/** 把会话模型记忆合并进内存会话列表（写库后必须同步，否则切换会话读不到） */
+function mergeConvModel(
+  conversations: Conversation[],
+  convId: string,
+  providerId: string,
+  model: string,
+): Conversation[] {
+  return conversations.map((c) => (c.id === convId ? { ...c, providerId, model } : c));
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   activeId: null,
@@ -51,6 +89,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   status: 'idle',
   streamingMessageId: null,
   abortController: null,
+  convProviderId: null,
+  convModel: null,
 
   loadConversations: async () => {
     const conversations = await listConversations();
@@ -59,22 +99,67 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   openConversation: async (id) => {
     const messages = await listMessages(id);
-    set({ activeId: id, messages, status: 'idle', streamingMessageId: null, abortController: null });
+    // 恢复会话级模型记忆；服务商被删或模型不在列表时回退全局
+    const conv = get().conversations.find((c) => c.id === id) ?? null;
+    const settings = useSettingsStore.getState().settings;
+    const convProvider = conv?.providerId
+      ? (settings?.providers.find((p) => p.id === conv.providerId) ?? null)
+      : null;
+    const convModel =
+      convProvider &&
+      conv?.model &&
+      (convProvider.models.length === 0 || convProvider.models.includes(conv.model))
+        ? conv.model
+        : null;
+    set({
+      activeId: id,
+      messages,
+      status: 'idle',
+      streamingMessageId: null,
+      abortController: null,
+      convProviderId: convModel && convProvider ? convProvider.id : null,
+      convModel,
+    });
   },
 
   newConversation: async () => {
     const conv = await createConversation();
     await get().loadConversations();
-    set({ activeId: conv.id, messages: [], status: 'idle', streamingMessageId: null, abortController: null });
+    set({
+      activeId: conv.id,
+      messages: [],
+      status: 'idle',
+      streamingMessageId: null,
+      abortController: null,
+      convProviderId: null,
+      convModel: null,
+    });
   },
 
   removeConversation: async (id) => {
     await deleteConversation(id);
     const { activeId, loadConversations } = get();
     if (activeId === id) {
-      set({ activeId: null, messages: [], status: 'idle', streamingMessageId: null });
+      set({
+        activeId: null,
+        messages: [],
+        status: 'idle',
+        streamingMessageId: null,
+        convProviderId: null,
+        convModel: null,
+      });
     }
     await loadConversations();
+  },
+
+  setConversationModel: async (providerId, model) => {
+    const { activeId, conversations } = get();
+    set({ convProviderId: providerId, convModel: model });
+    if (activeId) {
+      await updateConversationModel(activeId, providerId, model);
+      // 同步内存会话列表，否则切走再切回读不到记忆
+      set({ conversations: mergeConvModel(conversations, activeId, providerId, model) });
+    }
   },
 
   sendMessage: async (content) => {
@@ -97,6 +182,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const history: ChatMessage[] = [...get().messages, userMsg];
     set({ activeId: convId, messages: history });
     await get().runCompletion(convId, history);
+
+    // 4. 记录会话级模型记忆：会话固定使用本次实际生效的模型
+    const { provider, model } = resolveActiveModel();
+    if (provider && model) {
+      set({ convProviderId: provider.id, convModel: model });
+      await updateConversationModel(convId, provider.id, model);
+      // 同步内存会话列表，否则切换会话后记忆丢失
+      set({ conversations: mergeConvModel(get().conversations, convId, provider.id, model) });
+    }
   },
 
   regenerate: async (messageId) => {
@@ -135,10 +229,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   runCompletion: async (convId, history) => {
     const settings = useSettingsStore.getState().settings;
-    const provider = selectActiveProvider(settings);
+    // 会话级模型记忆：会话有记忆则用会话模型，否则回退全局设置
+    const { provider, model } = resolveActiveModel();
     // 未配置服务商：静默返回，由 UI 层拦截并引导去设置
     if (!provider) return;
-    const model = settings?.activeModel ?? provider.models[0] ?? '';
     const streamMode = settings?.streamMode ?? 'stream';
     const showReasoning = settings?.showReasoning ?? true;
 

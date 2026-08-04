@@ -16,6 +16,9 @@ export interface Conversation {
   title: string;
   createdAt: number;
   updatedAt: number;
+  /** 会话级模型记忆：该会话最近一次发送实际使用的服务商与模型 */
+  providerId?: string;
+  model?: string;
 }
 
 /** 服务商配置（OpenAI 兼容协议） */

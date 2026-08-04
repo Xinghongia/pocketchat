@@ -110,6 +110,31 @@ export async function touchConversation(id: string, title?: string): Promise<voi
   );
 }
 
+/** 记录会话最近使用的服务商与模型（会话级模型记忆） */
+export async function updateConversationModel(
+  id: string,
+  providerId: string,
+  model: string,
+): Promise<void> {
+  await openDB().then(
+    (db) =>
+      new Promise<void>((resolve, reject) => {
+        const t = db.transaction(DB.stores.conversations, 'readwrite');
+        const getReq = t.objectStore(DB.stores.conversations).get(id);
+        getReq.onsuccess = () => {
+          const conv = getReq.result as Conversation | undefined;
+          if (conv) {
+            conv.providerId = providerId;
+            conv.model = model;
+            t.objectStore(DB.stores.conversations).put(conv);
+          }
+        };
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error ?? new Error('更新会话模型失败'));
+      }),
+  );
+}
+
 export async function deleteConversation(id: string): Promise<void> {
   await openDB().then(
     (db) =>
@@ -211,6 +236,78 @@ export async function deleteMessage(id: string): Promise<void> {
         t.onerror = () => reject(t.error ?? new Error('删除消息失败'));
       }),
   );
+}
+
+// ---------- 全文搜索 ----------
+
+export interface SearchHit {
+  conversationId: string;
+  conversationTitle: string;
+  messageId: string;
+  role: ChatMessage['role'];
+  /** 完整消息内容 */
+  content: string;
+  /** 命中关键词的上下文片段 */
+  snippet: string;
+  createdAt: number;
+}
+
+/**
+ * 跨会话全文搜索（大小写不敏感）。
+ * 本地数据量小，直接遍历 messages + conversations 过滤；
+ * 每会话最多返回 maxPerConversation 条，总数限制 maxResults。
+ */
+export async function searchMessages(
+  keyword: string,
+  maxPerConversation = 3,
+  maxResults = 50,
+): Promise<SearchHit[]> {
+  const kw = keyword.trim().toLowerCase();
+  if (!kw) return [];
+
+  const [convs, allMessages] = await Promise.all([
+    getAll<Conversation>(DB.stores.conversations),
+    getAll<ChatMessage & { conversationId: string }>(DB.stores.messages),
+  ]);
+
+  const titleById = new Map(convs.map((c) => [c.id, c.title]));
+  const perConv = new Map<string, number>();
+  const hits: SearchHit[] = [];
+
+  // 按时间倒序（最新的先命中），每条消息生成一个 snippet
+  const sorted = [...allMessages].sort((a, b) => b.createdAt - a.createdAt);
+  for (const m of sorted) {
+    const text = `${m.content}\n${m.reasoning ?? ''}`.toLowerCase();
+    if (!text.includes(kw)) continue;
+
+    const count = perConv.get(m.conversationId) ?? 0;
+    if (count >= maxPerConversation) continue;
+    perConv.set(m.conversationId, count + 1);
+
+    hits.push({
+      conversationId: m.conversationId,
+      conversationTitle: titleById.get(m.conversationId) ?? '未命名对话',
+      messageId: m.id,
+      role: m.role,
+      content: m.content,
+      snippet: makeSnippet(m.content, kw),
+      createdAt: m.createdAt,
+    });
+    if (hits.length >= maxResults) break;
+  }
+
+  return hits;
+}
+
+/** 生成含命中关键词的片段（前后各截取 ~60 字符） */
+function makeSnippet(content: string, kwLower: string): string {
+  const text = content.replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const idx = text.toLowerCase().indexOf(kwLower);
+  if (idx < 0) return text.slice(0, 120);
+  const start = Math.max(0, idx - 60);
+  const end = Math.min(text.length, idx + kwLower.length + 60);
+  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`;
 }
 
 // ---------- 数据导出 / 清空 ----------

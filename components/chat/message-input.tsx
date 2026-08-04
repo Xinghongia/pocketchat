@@ -73,15 +73,17 @@ export function MessageInput({
   return (
     <div
       className={cn(
-        'border-t bg-background/80 px-4 pb-3 pt-2.5 backdrop-blur',
+        'bg-background/80 px-4 pb-4 pt-3 backdrop-blur',
         className,
       )}
     >
+      <div className="mx-auto w-full max-w-3xl">
       <div
         className={cn(
-          'flex items-end gap-2 rounded-[22px] border bg-card px-3.5 py-2.5',
-          'shadow-sm transition-all duration-200',
-          'focus-within:border-primary/40 focus-within:shadow-md focus-within:shadow-primary/10',
+          'flex items-end gap-2 rounded-[24px] border border-border/70 bg-card px-4 py-3',
+          'shadow-[0_1px_6px_rgba(0,0,0,0.05)] transition-all duration-200',
+          'hover:border-border',
+          'focus-within:border-primary/40 focus-within:shadow-[0_2px_10px_rgba(99,102,241,0.08)]',
         )}
       >
         <textarea
@@ -93,7 +95,7 @@ export function MessageInput({
           placeholder={placeholder}
           disabled={disabled}
           className={cn(
-            'max-h-[176px] min-h-[26px] flex-1 resize-none bg-transparent px-1 py-1',
+            'max-h-[176px] min-h-[28px] flex-1 resize-none bg-transparent px-1 py-1.5',
             'text-sm leading-relaxed text-foreground',
             'placeholder:text-muted-foreground/50',
             'focus:outline-none disabled:opacity-50',
@@ -128,9 +130,10 @@ export function MessageInput({
           </button>
         )}
       </div>
-      <p className="mt-2 select-none px-2 text-center text-[10.5px] tracking-wide text-muted-foreground/50">
+      <p className="mt-2.5 select-none text-center text-[10.5px] tracking-wide text-muted-foreground/50">
         AI 生成内容仅供参考 · 数据仅保存在本地
       </p>
+      </div>
     </div>
   );
 }
