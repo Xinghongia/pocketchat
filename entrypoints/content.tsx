@@ -10,6 +10,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { createShadowRootUi } from 'wxt/utils/content-script-ui/shadow-root';
 import { FloatingApp } from '@/components/floating-app';
 import '@/assets/main.css';
+import { setPendingPrompt } from '@/lib/pending-prompt';
+import { buildSummarizePrompt, extractPageText } from '@/lib/page-context';
 
 type FloatingUi = Awaited<ReturnType<typeof createShadowRootUi<Root>>>;
 
@@ -135,6 +137,15 @@ export default defineContentScript({
       else void openPanel();
     };
 
+    // 带 prompt 打开悬浮窗（划词 / 右键 / 页面总结共用）：
+    // 先把 prompt 暂存到模块级，FloatingApp 挂载时取走预填输入框。
+    // 若面板已开着则先收起再重开（保证输入框拿到新的初始值）。
+    const openWithPrompt = async (p: { prompt: string; autoSend?: boolean }) => {
+      setPendingPrompt(p);
+      if (ui) closePanel();
+      await openPanel();
+    };
+
     // ---------- 监听扩展消息 ----------
     // 侧边栏展开全页面时会广播 PC_OPEN_FULL_PAGE 到所有 content script，
     // 此时本页若开着悬浮窗也应收起（避免两个 UI 同时存在）。
@@ -142,7 +153,135 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener((msg) => {
       if (msg?.type === 'PC_OPEN_FULL_PAGE' || msg?.type === 'PC_CLOSE_FLOATING') {
         closePanel();
+      } else if (
+        msg?.type === 'PC_OPEN_FLOATING_WITH_PROMPT' &&
+        typeof msg.prompt === 'string' &&
+        msg.prompt.trim()
+      ) {
+        void openWithPrompt({ prompt: msg.prompt });
+      } else if (msg?.type === 'PC_SUMMARIZE_PAGE') {
+        void openWithPrompt({ prompt: buildSummarizePrompt(), autoSend: true });
+      } else if (msg?.type === 'PC_SEND_PAGE') {
+        void openWithPrompt({ prompt: extractPageText() });
       }
+    });
+
+    // ---------- 划词提问工具栏 ----------
+    // 在页面中选中文字后，选区上方浮现小浮条「✨ 问 PocketChat」，
+    // 点击即打开悬浮窗并预填选中内容。浮条独立 Shadow DOM，隔离页面样式。
+    const TOOLBAR_ID = 'pocketchat-selection-bar';
+    let toolbarHost: HTMLElement | null = null;
+    let toolbarShadow: ShadowRoot | null = null;
+    let barVisible = false;
+
+    // 选区是否落在 PocketChat 自己的 UI 内（悬浮窗 / 工具栏 / 按钮），是则忽略
+    const isInsideOurUI = (node: Node | null): boolean => {
+      let n: Node | null = node;
+      while (n) {
+        if (n instanceof Element && n.id === HOST_ID) return true;
+        const root = n.getRootNode();
+        if (root === shadow || root === toolbarShadow) return true;
+        if (root instanceof ShadowRoot) n = root.host;
+        else n = n.parentNode;
+      }
+      return false;
+    };
+
+    const ensureToolbar = () => {
+      if (toolbarHost) return;
+      toolbarHost = document.createElement('div');
+      toolbarHost.id = TOOLBAR_ID;
+      toolbarShadow = toolbarHost.attachShadow({ mode: 'open' });
+      const style = document.createElement('style');
+      style.textContent = `
+        :host { all: initial; }
+        .pc-bar {
+          position: fixed; left: 0; top: 0; z-index: 2147483646;
+          display: flex; align-items: center; gap: 5px;
+          padding: 5px 11px; border: none; border-radius: 999px;
+          background: rgba(30, 41, 59, .96); color: #fff;
+          font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+          font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap;
+          cursor: pointer; box-shadow: 0 4px 16px rgba(0, 0, 0, .28);
+          transform: translate(-50%, -100%);
+          opacity: 0; pointer-events: none;
+          transition: opacity .12s ease;
+          user-select: none; -webkit-user-select: none;
+        }
+        .pc-bar:hover { background: rgba(51, 65, 85, .98); }
+        .pc-bar svg { width: 14px; height: 14px; flex-shrink: 0; }
+      `;
+      toolbarShadow.appendChild(style);
+      const bar = document.createElement('button');
+      bar.type = 'button';
+      bar.className = 'pc-bar';
+      bar.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3z"/></svg><span>问 PocketChat</span>';
+      bar.addEventListener('click', () => {
+        const text = window.getSelection()?.toString().trim();
+        hideToolbar();
+        if (text) void openWithPrompt({ prompt: text });
+      });
+      toolbarShadow.appendChild(bar);
+      document.documentElement.appendChild(toolbarHost);
+    };
+
+    const showToolbar = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) {
+        hideToolbar();
+        return;
+      }
+      if (isInsideOurUI(sel.anchorNode) || isInsideOurUI(sel.focusNode)) {
+        hideToolbar();
+        return;
+      }
+      const text = sel.toString().trim();
+      if (!text || text.length > 5000) {
+        hideToolbar();
+        return;
+      }
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) {
+        hideToolbar();
+        return;
+      }
+      ensureToolbar();
+      const bar = toolbarShadow?.querySelector<HTMLElement>('.pc-bar');
+      if (!bar) return;
+      // 浮条居中对齐选区，钳制在视口内
+      const left = Math.min(Math.max(rect.left + rect.width / 2, 70), window.innerWidth - 70);
+      const top = Math.max(rect.top - 10, 8);
+      bar.style.left = `${left}px`;
+      bar.style.top = `${top}px`;
+      bar.style.opacity = '1';
+      bar.style.pointerEvents = 'auto';
+      barVisible = true;
+    };
+
+    const hideToolbar = () => {
+      if (!barVisible || !toolbarShadow) return;
+      const bar = toolbarShadow.querySelector<HTMLElement>('.pc-bar');
+      if (bar) {
+        bar.style.opacity = '0';
+        bar.style.pointerEvents = 'none';
+      }
+      barVisible = false;
+    };
+
+    let selTimer: number | undefined;
+    document.addEventListener('selectionchange', () => {
+      window.clearTimeout(selTimer);
+      selTimer = window.setTimeout(showToolbar, 120);
+    });
+    document.addEventListener('scroll', hideToolbar, true);
+    window.addEventListener('blur', hideToolbar);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hideToolbar();
+    });
+    document.addEventListener('mousedown', (e) => {
+      // 点击浮条本身不隐藏（保证 click 能触发）；点其他任何地方都收起
+      if (e.target instanceof Node && e.target.getRootNode() !== toolbarShadow) hideToolbar();
     });
 
     // ---------- 拖动（pointer events，区分点击与拖动） ----------

@@ -17,6 +17,10 @@ interface MessageListProps {
   onPick?: (text: string) => void;
   /** 打开设置弹窗（无服务商引导用） */
   onOpenSettings?: () => void;
+  /** 重新生成 AI 回复 */
+  onRegenerate?: (messageId: string) => void;
+  /** 编辑用户消息 */
+  onEdit?: (messageId: string, content: string) => void;
   className?: string;
 }
 
@@ -33,6 +37,8 @@ export function MessageList({
   hasProvider,
   onPick,
   onOpenSettings,
+  onRegenerate,
+  onEdit,
   className,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -65,6 +71,8 @@ export function MessageList({
             message={m}
             compact={compact}
             streaming={m.id === streamingMessageId && status === 'streaming'}
+            onRegenerate={onRegenerate}
+            onEdit={onEdit}
           />
         ))}
         <div ref={bottomRef} className="h-px" />

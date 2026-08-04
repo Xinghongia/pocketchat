@@ -195,6 +195,24 @@ export async function updateMessage(
   );
 }
 
+/** 仅更新消息内容（编辑消息后重发用，不清除思考过程） */
+export async function updateMessageContent(id: string, content: string): Promise<void> {
+  await updateMessage(id, content, undefined);
+}
+
+/** 删除单条消息（编辑/重新生成时截断后续消息用） */
+export async function deleteMessage(id: string): Promise<void> {
+  await openDB().then(
+    (db) =>
+      new Promise<void>((resolve, reject) => {
+        const t = db.transaction(DB.stores.messages, 'readwrite');
+        t.objectStore(DB.stores.messages).delete(id);
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error ?? new Error('删除消息失败'));
+      }),
+  );
+}
+
 // ---------- 数据导出 / 清空 ----------
 
 export interface ExportBundle {

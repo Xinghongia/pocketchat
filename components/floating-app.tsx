@@ -12,6 +12,7 @@ import { useChatStore } from '@/stores/chat';
 import { useSettingsStore, selectActiveProvider } from '@/stores/settings';
 import { useDarkMode } from '@/lib/hooks/use-theme';
 import { PortalContainerProvider } from '@/lib/portal-context';
+import { takePendingPrompt } from '@/lib/pending-prompt';
 import { cn } from '@/lib/utils';
 
 interface FloatingAppProps {
@@ -31,6 +32,8 @@ export function FloatingApp({ position, portalContainer, onClose, onExpand }: Fl
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [convOpen, setConvOpen] = useState(false);
   const dark = useDarkMode();
+  // 划词提问 / 页面总结注入的一次性 prompt（挂载时取走并清空）
+  const [pending] = useState(() => takePendingPrompt());
 
   // 把暗色 class 应用到 portal 容器（uiContainer）：
   // 既覆盖主体 UI，也覆盖 Dialog/Select 的 Portal 弹层（它们渲染在 uiContainer 下）
@@ -54,6 +57,8 @@ export function FloatingApp({ position, portalContainer, onClose, onExpand }: Fl
   const newConversation = useChatStore((s) => s.newConversation);
   const removeConversation = useChatStore((s) => s.removeConversation);
   const sendMessage = useChatStore((s) => s.sendMessage);
+  const regenerate = useChatStore((s) => s.regenerate);
+  const editMessage = useChatStore((s) => s.editMessage);
   const stop = useChatStore((s) => s.stop);
 
   const activeTitle = activeId
@@ -77,6 +82,17 @@ export function FloatingApp({ position, portalContainer, onClose, onExpand }: Fl
     }
     void sendMessage(text);
   };
+
+  // 「总结当前页面」等场景：挂载后自动发送预填的 prompt
+  useEffect(() => {
+    if (pending?.autoSend && pending.prompt.trim()) {
+      // 稍等一拍，让会话/设置加载完成后再发送
+      const t = setTimeout(() => handleSend(pending.prompt), 400);
+      return () => clearTimeout(t);
+    }
+    // 仅挂载时执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div
@@ -144,6 +160,8 @@ export function FloatingApp({ position, portalContainer, onClose, onExpand }: Fl
             hasProvider={hasProvider}
             onOpenSettings={() => setSettingsOpen(true)}
             onPick={(text) => handleSend(text)}
+            onRegenerate={(id) => void regenerate(id)}
+            onEdit={(id, c) => void editMessage(id, c)}
             emptyHint="随时随地，问点什么吧"
           />
 
@@ -151,6 +169,7 @@ export function FloatingApp({ position, portalContainer, onClose, onExpand }: Fl
             onSend={handleSend}
             onStop={stop}
             streaming={status === 'streaming'}
+            initialValue={pending?.prompt}
             placeholder={
               hasProvider
                 ? '输入消息，Enter 发送，Shift+Enter 换行'

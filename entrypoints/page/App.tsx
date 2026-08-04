@@ -35,6 +35,8 @@ export default function App() {
   const newConversation = useChatStore((s) => s.newConversation);
   const removeConversation = useChatStore((s) => s.removeConversation);
   const sendMessage = useChatStore((s) => s.sendMessage);
+  const regenerate = useChatStore((s) => s.regenerate);
+  const editMessage = useChatStore((s) => s.editMessage);
   const stop = useChatStore((s) => s.stop);
 
   const activeTitle = activeId
@@ -89,6 +91,8 @@ export default function App() {
           hasProvider={hasProvider}
           onOpenSettings={() => setSettingsOpen(true)}
           onPick={(text) => handleSend(text)}
+          onRegenerate={(id) => void regenerate(id)}
+          onEdit={(id, c) => void editMessage(id, c)}
           emptyHint="点一下示例，或直接输入你的问题"
         />
 
