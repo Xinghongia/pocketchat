@@ -11,6 +11,8 @@ interface SettingsState {
   addProvider: (p: ProviderConfig) => Promise<void>;
   updateProvider: (p: ProviderConfig) => Promise<void>;
   removeProvider: (providerId: string) => Promise<void>;
+  /** 拖拽排序：把 from 索引的项移到 to 索引 */
+  reorderProviders: (from: number, to: number) => Promise<void>;
   setTheme: (theme: AppSettings['theme']) => Promise<void>;
   setStreamMode: (mode: StreamMode) => Promise<void>;
   setShowReasoning: (show: boolean) => Promise<void>;
@@ -60,6 +62,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const { settings } = get();
     if (!settings) return;
     const next = await removeProvider(settings, providerId);
+    set({ settings: next });
+    await saveSettings(next);
+  },
+
+  reorderProviders: async (from, to) => {
+    const { settings } = get();
+    if (!settings || from === to) return;
+    const providers = [...settings.providers];
+    const [moved] = providers.splice(from, 1);
+    if (!moved) return;
+    providers.splice(to, 0, moved);
+    const next = { ...settings, providers };
     set({ settings: next });
     await saveSettings(next);
   },
